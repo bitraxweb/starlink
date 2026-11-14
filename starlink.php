@@ -1,0 +1,192 @@
+<?php
+/* Telegram configurado con los datos proporcionados por el propietario.
+   IMPORTANTE: mantener esta copia privada y regenerar el token si se expuso. */
+$TELEGRAM_BOT_TOKEN = '9036279739:AAFLznSCmIrVTIhyBp9PwXCEAP1zSUQlX44';
+$TELEGRAM_CHAT_ID = '-5260461924';
+
+$countries = [
+    'PE' => ['name'=>'Perú', 'prefix'=>'51', 'price'=>'S/ 5', 'length'=>9, 'pattern'=>'/^9[0-9]{8}$/', 'operators'=>['Movistar','Claro','Entel','Bitel','Otro / No estoy seguro']],
+    'AR' => ['name'=>'Argentina', 'prefix'=>'54', 'price'=>'ARS $8.000', 'length'=>10, 'pattern'=>'/^[0-9]{10}$/', 'operators'=>['Personal','Claro','Movistar','Tuenti','Otro / No estoy seguro']],
+    'CL' => ['name'=>'Chile', 'prefix'=>'56', 'price'=>'CLP $5.000', 'length'=>9, 'pattern'=>'/^9[0-9]{8}$/', 'operators'=>['Entel','Movistar','Claro','WOM','VTR','Otro / No estoy seguro']],
+];
+
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    $input = json_decode(file_get_contents('php://input'), true);
+    if (!is_array($input)) {
+        http_response_code(400);
+        echo json_encode(['ok'=>false,'message'=>'Solicitud no válida.']); exit;
+    }
+    $country = strtoupper(trim((string)($input['country'] ?? '')));
+    $phone = preg_replace('/\D+/', '', (string)($input['phone'] ?? ''));
+    $operator = trim((string)($input['operator'] ?? ''));
+    $consent = ($input['consent'] ?? false) === true;
+    if (!isset($countries[$country])) {
+        http_response_code(422); echo json_encode(['ok'=>false,'message'=>'Selecciona un país válido.']); exit;
+    }
+    $cfg = $countries[$country];
+    if (!preg_match($cfg['pattern'], $phone) || !in_array($operator,$cfg['operators'],true) || !$consent) {
+        http_response_code(422); echo json_encode(['ok'=>false,'message'=>'Comprueba el número, la operadora y la autorización.']); exit;
+    }
+    if (!$TELEGRAM_BOT_TOKEN || !$TELEGRAM_CHAT_ID || !function_exists('curl_init')) {
+        http_response_code(500); echo json_encode(['ok'=>false,'message'=>'Servicio de solicitudes aún no configurado.']); exit;
+    }
+    $message = "📩 NUEVA SOLICITUD — CONEXIÓN MÓVIL\n\n"
+        . "🌎 País: {$cfg['name']}\n"
+        . "📱 Celular: +{$cfg['prefix']} {$phone}\n"
+        . "📡 Operadora: {$operator}\n"
+        . "🎁 Primer mes: GRATIS (solo el primer mes)\n"
+        . "💰 Desde el segundo mes: {$cfg['price']} / mes\n"
+        . "🕒 Fecha: " . date('d/m/Y H:i:s') . "\n\n"
+        . "El interesado consintió el contacto. No se realizó ninguna activación ni cobro.";
+    $ch = curl_init('https://api.telegram.org/bot'.$TELEGRAM_BOT_TOKEN.'/sendMessage');
+    curl_setopt_array($ch,[
+        CURLOPT_POST=>true,
+        CURLOPT_POSTFIELDS=>http_build_query(['chat_id'=>$TELEGRAM_CHAT_ID,'text'=>$message]),
+        CURLOPT_RETURNTRANSFER=>true, CURLOPT_CONNECTTIMEOUT=>5,
+        CURLOPT_TIMEOUT=>12, CURLOPT_SSL_VERIFYPEER=>true, CURLOPT_SSL_VERIFYHOST=>2
+    ]);
+    $response = curl_exec($ch);
+    $code = (int)curl_getinfo($ch,CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    $data = json_decode((string)$response,true);
+    if ($response===false || $code!==200 || !($data['ok'] ?? false)) {
+        error_log('Error enviando solicitud a Telegram HTTP '.$code);
+        http_response_code(502); echo json_encode(['ok'=>false,'message'=>'No se pudo enviar la solicitud. Inténtalo nuevamente.']); exit;
+    }
+    echo json_encode(['ok'=>true]); exit;
+}
+?>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#050505" />
+  <meta name="description" content="Conoce las tarifas de nuestro servicio móvil, revisa las condiciones y solicita información sobre su activación." />
+  <title>Conectividad móvil | Información y planes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root{color-scheme:dark;--bg:#050505;--surface:#101010;--surface2:#151515;--white:#f6f6f4;--muted:#929292;--border:#292929;--font:'DM Sans',Arial,sans-serif;--display:'Manrope',Arial,sans-serif;--radius:18px}
+    *,*::before,*::after{box-sizing:border-box}
+    html{scroll-behavior:smooth;scroll-padding-top:90px}
+    body{margin:0;background:var(--bg);color:var(--white);font-family:var(--font);-webkit-font-smoothing:antialiased}
+    body.no-scroll{overflow:hidden}
+    a{color:inherit;text-decoration:none}button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.6}
+    ::selection{background:#ededed;color:#111}
+    .container{width:min(1180px,calc(100% - 44px));margin:auto}
+    .eyebrow{font-size:11px;font-weight:700;letter-spacing:.19em;text-transform:uppercase;color:#aaa}
+    .header{position:sticky;top:0;z-index:40;background:rgba(5,5,5,.84);border-bottom:1px solid rgba(255,255,255,.09);backdrop-filter:blur(18px)}
+    .nav{height:76px;display:flex;align-items:center;justify-content:space-between;gap:22px}
+    .brand{display:flex;align-items:center;gap:12px;font-family:var(--display);font-weight:800;letter-spacing:.075em;font-size:13px;text-transform:uppercase;white-space:nowrap}
+    .brand img{width:38px;height:38px;object-fit:contain;display:none}
+    .brand img.loaded{display:block}.brand .brand-mark{width:33px;height:33px;border:1.5px solid #fff;border-radius:50%;display:grid;place-items:center;font-size:15px;transform:rotate(-28deg)}
+    .brand:has(img.loaded) .brand-mark{display:none}
+    .nav-links{display:flex;align-items:center;gap:34px;font-size:13px;color:#bbb}
+    .nav-links a:hover,.footer a:hover{color:#fff}
+    .button{display:inline-flex;align-items:center;justify-content:center;gap:13px;border:1px solid #fff;border-radius:8px;padding:15px 22px;background:#f5f5f3;color:#090909;font-weight:700;font-size:13px;transition:transform .2s,background .2s,border-color .2s;min-height:48px}
+    .button:hover{transform:translateY(-2px);background:#dadada}.button:focus-visible,.menu-button:focus-visible,.close:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid white;outline-offset:3px}
+    .button-dark{background:transparent;color:#fff;border-color:#5d5d5d}.button-dark:hover{background:#1d1d1d;border-color:white}
+    .arrow{font-size:18px;font-weight:400;line-height:0}.nav .button{padding:12px 18px;min-height:40px}
+    .menu-button{display:none;background:transparent;color:#fff;border:0;padding:8px}
+    .hero{position:relative;overflow:hidden;min-height:675px;display:flex;align-items:center;border-bottom:1px solid #202020}
+    .hero::before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 72% 45%,rgba(255,255,255,.095),transparent 31%),linear-gradient(90deg,#050505 8%,rgba(5,5,5,.96) 30%,rgba(5,5,5,.28) 100%)}
+    .hero::after{content:"";position:absolute;inset:0;pointer-events:none;background-image:radial-gradient(circle,#ffffff 0.65px,transparent 1px);background-size:61px 57px;opacity:.19;mask-image:linear-gradient(to right,transparent 25%,black 85%)}
+    .hero-inner{position:relative;z-index:2;padding-top:95px;padding-bottom:110px}
+    .hero-content{max-width:690px}.hero .eyebrow{display:flex;align-items:center;gap:13px;color:#e5e5e5}.hero .eyebrow::before{content:"";width:23px;height:1px;background:#fff}
+    h1,h2,h3,p{margin-top:0}h1,h2,h3{font-family:var(--display)}
+    h1{font-size:clamp(49px,6.7vw,91px);letter-spacing:-.075em;line-height:1.065;font-weight:700;margin:24px 0 26px}
+    h1 span{color:#929292}.intro{max-width:500px;font-size:16px;line-height:1.85;color:#b1b1b1;margin-bottom:34px}
+    .hero-actions{display:flex;gap:12px;flex-wrap:wrap}.hero-foot{margin-top:57px;display:flex;align-items:center;gap:13px;color:#919191;font-size:12px;letter-spacing:.02em}.hero-foot .line{width:30px;height:1px;background:#666}
+    .planet-wrap{position:absolute;width:680px;height:680px;right:max(-100px,calc((100vw - 1260px)/2 - 65px));top:calc(50% - 338px);z-index:1;pointer-events:none;opacity:.85}
+    .planet{position:absolute;width:510px;height:510px;border-radius:50%;top:85px;right:10px;border:1px solid #3b3b3b;box-shadow:inset 75px -40px 95px rgba(255,255,255,.036),inset -80px 25px 80px #020202,0 0 100px rgba(255,255,255,.025);background:radial-gradient(circle at 40% 28%,#242424,#090909 42%,#010101 75%)}
+    .orbit{position:absolute;inset:30px;border:1px solid rgba(255,255,255,.2);border-radius:50%;transform:rotate(-27deg) scaleY(.38)}
+    .orbit:nth-child(2){inset:0;transform:rotate(36deg) scaleY(.67);opacity:.38}.orbit-dot{position:absolute;right:90px;top:180px;width:6px;height:6px;background:white;box-shadow:0 0 20px 3px #bfbfbf;border-radius:50%}
+    section.content-section{padding:115px 0}.section-top{display:flex;justify-content:space-between;align-items:end;gap:40px;margin-bottom:44px}.section-top h2{font-size:clamp(33px,4.2vw,54px);line-height:1.13;letter-spacing:-.055em;margin:13px 0 0;max-width:610px;font-weight:700}.section-top p{color:#999;max-width:310px;line-height:1.7;font-size:14px;margin-bottom:0}
+    .plans{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.plan{background:linear-gradient(155deg,#171717,#0b0b0b);border:1px solid #303030;border-radius:var(--radius);padding:31px;display:flex;flex-direction:column;min-height:370px;transition:border-color .2s,transform .2s}.plan:hover{transform:translateY(-4px);border-color:#797979}.plan-featured{border-color:#a1a1a1;background:linear-gradient(160deg,#232323,#101010)}
+    .plan-head{display:flex;justify-content:space-between;align-items:start;gap:10px}.plan-name{text-transform:uppercase;letter-spacing:.16em;font-size:11px;font-weight:700;color:#c6c6c6}.plan-tag{padding:6px 9px;background:#f2f2f2;color:#070707;border-radius:4px;font-size:10px;font-weight:800;text-transform:uppercase;white-space:nowrap}
+    .price{font-family:var(--display);font-weight:700;font-size:clamp(44px,4.2vw,60px);letter-spacing:-.065em;line-height:1;margin-top:40px}.currency{font-size:19px;vertical-align:top;letter-spacing:-.02em;margin-right:3px}.price-desc{color:#a7a7a7;font-size:13px;margin-top:13px}.plan-divider{border:0;border-top:1px solid #353535;width:100%;margin:27px 0 21px}.plan-details{color:#c8c8c8;font-size:13px;line-height:1.75;min-height:45px;margin-bottom:24px}.plan .button{margin-top:auto;width:100%}
+    .notice{margin-top:22px;border:1px solid #282828;border-radius:10px;padding:18px 20px;display:flex;gap:12px;align-items:start;color:#a7a7a7;font-size:12px;line-height:1.7}.notice svg{flex:0 0 17px;margin-top:2px}.notice strong{color:#f0f0f0}
+    .process-section{background:#0d0d0d;border-block:1px solid #212121}.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:30px}.step{padding:5px 20px 4px 0}.step-num{font-family:var(--display);font-size:14px;color:#777;border-bottom:1px solid #333;padding-bottom:25px;margin-bottom:27px}.step h3{font-size:20px;letter-spacing:-.035em;margin-bottom:12px}.step p{color:#989898;font-size:14px;line-height:1.75;margin:0;max-width:295px}
+    .closing{display:flex;align-items:center;justify-content:space-between;gap:35px;border-top:1px solid #262626;padding:70px 0}.closing h2{font-size:clamp(27px,4vw,45px);letter-spacing:-.055em;line-height:1.15;margin:12px 0 0}.footer{border-top:1px solid #202020;padding:25px 0 35px;color:#858585;font-size:12px}.footer-inner{display:flex;justify-content:space-between;gap:15px;line-height:1.7}.footer a{color:#aaa}
+    .modal-backdrop{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.82);backdrop-filter:blur(9px);display:none;align-items:center;justify-content:center;padding:18px;overflow-y:auto}.modal-backdrop.active{display:flex}.modal{position:relative;background:#111;border:1px solid #444;border-radius:20px;width:min(100%,490px);padding:36px;box-shadow:0 25px 120px rgba(0,0,0,.65);animation:enter .2s ease-out}@keyframes enter{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+    .close{position:absolute;right:21px;top:18px;width:34px;height:34px;border:1px solid #444;border-radius:50%;background:transparent;color:#fff;font-size:24px;line-height:1;display:grid;place-items:center}.modal h2{font-size:31px;letter-spacing:-.06em;line-height:1.15;margin:16px 0 10px}.modal-subtitle{color:#a8a8a8;font-size:13px;line-height:1.65;margin-bottom:25px}.selection{border:1px solid #393939;background:#1b1b1b;padding:15px;border-radius:9px;display:flex;justify-content:space-between;gap:12px;margin-bottom:22px;font-size:13px}.selection span:last-child{font-weight:700;text-align:right}
+    .field-label{display:block;color:#dfdfdf;font-weight:600;font-size:12px;margin:0 0 9px}.phone-row{display:flex;gap:9px}.prefix{display:flex;align-items:center;justify-content:center;border:1px solid #454545;border-radius:8px;background:#191919;padding:0 15px;font-weight:700;min-width:81px}.field{width:100%;border:1px solid #454545;border-radius:8px;background:#191919;color:#fff;padding:15px;outline:0;min-height:50px;font-size:15px}.field:focus{border-color:#fff}.field::placeholder{color:#777}.field-group{margin-bottom:20px}.help{margin:8px 0 0;color:#8b8b8b;font-size:11px;line-height:1.55}.consent{display:flex;gap:11px;color:#b4b4b4;font-size:12px;line-height:1.6;margin:22px 0}.consent input{accent-color:#fff;margin-top:3px;align-self:flex-start}.modal .button{width:100%}.form-status{font-size:12px;color:#ffb9b9;line-height:1.55;min-height:17px;margin:13px 0 0}.success{display:none;text-align:center;padding:34px 0 6px}.success-icon{width:84px;height:84px;border:2px solid #f5f5f5;border-radius:50%;display:grid;place-items:center;margin:0 auto 26px}.success-icon svg{width:42px;height:42px}.success p{font-size:15px;color:#aaa;line-height:1.8;margin:17px auto 25px;max-width:350px}.success-summary{border:1px solid #383838;border-radius:11px;padding:18px;color:#dedede;font-size:13px;line-height:1.75;margin-bottom:25px}
+    @media(max-width:960px){.planet-wrap{right:-270px;opacity:.5}.hero::before{background:linear-gradient(90deg,#050505 5%,rgba(5,5,5,.94) 50%,rgba(5,5,5,.3))}.nav-links{gap:18px}.plans{gap:10px}.plan{padding:23px}}
+    @media(max-width:700px){.container{width:min(100% - 36px,500px)}.nav{height:67px}.nav-links{display:none;position:absolute;top:67px;left:0;right:0;background:#101010;border-bottom:1px solid #292929;padding:22px;flex-direction:column;align-items:stretch}.nav-links.open{display:flex}.nav-links a{padding:8px 0}.nav-cta{display:none}.menu-button{display:block}.hero{min-height:630px;align-items:flex-start}.hero-inner{padding-top:103px;padding-bottom:78px}.hero-content{position:relative}.hero h1{font-size:clamp(45px,11.7vw,72px);margin:26px 0 21px}.intro{font-size:14px;line-height:1.85;max-width:350px}.planet-wrap{width:420px;height:420px;top:150px;right:-240px;opacity:.35}.planet{width:370px;height:370px;top:25px;right:10px}.hero-foot{margin-top:56px}.hero-actions{gap:10px}.hero-actions .button{width:100%}section.content-section{padding:77px 0}.section-top{display:block;margin-bottom:28px}.section-top p{margin-top:18px}.plans,.steps{grid-template-columns:1fr}.plan{min-height:325px;padding:27px}.price{font-size:54px;margin-top:29px}.plan-divider{margin:20px 0 14px}.plan-details{margin-bottom:18px;min-height:auto}.steps{gap:31px}.step-num{padding-bottom:15px;margin-bottom:17px}.closing{display:block;padding:53px 0}.closing .button{margin-top:26px;width:100%}.footer-inner{display:block}.footer-inner span{display:block;margin-bottom:9px}.modal{padding:30px 22px}.modal h2{font-size:27px}}
+    @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation:none!important;transition:none!important}}
+    /* Formulario como pantalla principal: sin portada, sin ventana emergente. */
+    body{min-height:100vh;background:#050505;overflow:auto!important}
+    .modal-backdrop,.modal-backdrop.active{position:static;display:flex;min-height:100vh;padding:24px 16px;background:#050505;backdrop-filter:none;overflow:visible;align-items:flex-start;justify-content:center}
+    .modal{width:min(100%,490px);margin:auto 0;box-shadow:none;animation:none}
+    .modal .field{color-scheme:dark}
+    .modal #submitButton{margin-top:4px}
+    @media(max-width:700px){.modal-backdrop,.modal-backdrop.active{padding:12px;background:#050505}.modal{padding:28px 22px;border-radius:16px}}
+  </style>
+</head>
+<body>
+  <div class="modal-backdrop active" id="modalBackdrop" role="presentation">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div id="formView">
+        <div class="eyebrow">Solicitud de información</div><h2 id="modalTitle">Hablemos de tu conexión.</h2>
+        <p class="modal-subtitle">Completa tus datos para que un asesor pueda contactarte y brindarte información sobre la activación.</p>
+                 <form id="contactForm" novalidate>
+           <div class="field-group"><label class="field-label" for="country">País</label><select class="field" id="country" name="country" required><option value="PE">🇵🇪 Perú</option><option value="AR">🇦🇷 Argentina</option><option value="CL">🇨🇱 Chile</option></select></div>
+           <div class="selection"><span>Primer mes</span><span>GRATIS (solo mes 1)</span></div>
+           <div class="selection"><span>Desde el segundo mes</span><span id="selectedPlan">S/ 5 / mes</span></div>
+           <div class="field-group"><label class="field-label" for="operator">Operadora actual</label><select class="field" id="operator" name="operator" required></select></div>
+           <div class="field-group"><label class="field-label" for="phone">Número de celular</label><div class="phone-row"><div class="prefix" id="prefix">🇵🇪 +51</div><input class="field" id="phone" name="phone" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="9" placeholder="987654321" required aria-describedby="phoneHelp" /></div><p class="help" id="phoneHelp">Ingresa los 9 dígitos de tu móvil, sin código de país.</p></div>
+           <label class="consent"><input id="consent" type="checkbox" required /><span>Autorizo que me contacten sobre esta solicitud. Entiendo que enviar mis datos no activa ningún servicio ni genera un cobro. El primer mes gratis está sujeto a las condiciones comunicadas.</span></label>
+<button class="button" id="submitButton" type="submit">Enviar solicitud <span class="arrow" aria-hidden="true">↗</span></button><p class="form-status" id="formStatus" role="alert" aria-live="polite"></p>
+        </form>
+      </div>
+      <div class="success" id="successView" role="status"><div class="success-icon"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 5 5L20 6" /></svg></div><h2 id="successTitle">¡Gracias!</h2><p>Recibimos tu solicitud. Un asesor podrá contactarte para ayudarte a continuar con la información sobre el servicio.</p><div class="success-summary">Tu solicitud fue enviada correctamente. La contratación está sujeta a confirmación con el proveedor.</div><button class="button button-dark" id="finishButton" type="button">Enviar otra solicitud</button></div>
+    </div>
+  </div>
+  <script>
+    const plans = {
+      PE:{name:'Perú',flag:'🇵🇪',prefix:'51',price:'S/ 5',length:9,regex:/^9\d{8}$/,example:'987654321',operators:['Movistar','Claro','Entel','Bitel','Otro / No estoy seguro']},
+      AR:{name:'Argentina',flag:'🇦🇷',prefix:'54',price:'ARS $8.000',length:10,regex:/^\d{10}$/,example:'1123456789',operators:['Personal','Claro','Movistar','Tuenti','Otro / No estoy seguro']},
+      CL:{name:'Chile',flag:'🇨🇱',prefix:'56',price:'CLP $5.000',length:9,regex:/^9\d{8}$/,example:'912345678',operators:['Entel','Movistar','Claro','WOM','VTR','Otro / No estoy seguro']}
+    };
+    const backdrop=document.getElementById('modalBackdrop'),form=document.getElementById('contactForm'),country=document.getElementById('country'),phone=document.getElementById('phone'),operator=document.getElementById('operator'),consent=document.getElementById('consent'),status=document.getElementById('formStatus'),submit=document.getElementById('submitButton');
+    function updateCountry(){
+      const p=plans[country.value];
+      document.getElementById('selectedPlan').textContent=p.price+' / mes';
+      document.getElementById('prefix').textContent=p.flag+' +'+p.prefix;
+      document.getElementById('phoneHelp').textContent=country.value==='AR'?'Ingresa 10 dígitos del móvil, sin +54, 0 ni el 15.':`Ingresa ${p.length} dígitos de tu móvil, sin el código del país.`;
+      phone.maxLength=p.length;phone.placeholder=p.example;phone.value='';
+      operator.replaceChildren(new Option('Selecciona tu operadora',''),...p.operators.map(o=>new Option(o,o)));
+      status.textContent='';
+    }
+    country.addEventListener('change',updateCountry);
+    phone.addEventListener('input',()=>{phone.value=phone.value.replace(/\D/g,'').slice(0,plans[country.value].length);status.textContent=''});
+    // Perú siempre es la selección inicial, sin detección geográfica.
+    country.value='PE';
+    updateCountry();
+    document.getElementById('finishButton').addEventListener('click',()=>{
+      form.reset();country.value='PE';updateCountry();
+      document.getElementById('successView').style.display='none';
+      document.getElementById('formView').style.display='block';
+      window.scrollTo({top:0,behavior:'smooth'});country.focus();
+    });
+    form.addEventListener('submit',async e=>{
+      e.preventDefault();status.textContent='';const p=plans[country.value],number=phone.value.replace(/\D/g,'');
+      if(!p.regex.test(number)){status.textContent='Ingresa un número móvil válido para '+p.name+'.';phone.focus();return}
+      if(!p.operators.includes(operator.value)){status.textContent='Selecciona tu operadora.';operator.focus();return}
+      if(!consent.checked){status.textContent='Debes autorizar el contacto para continuar.';consent.focus();return}
+      submit.disabled=true;submit.textContent='Enviando…';
+      try{
+        const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+        let response;try{response=await fetch(window.location.pathname+window.location.search,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify({country:country.value,phone:number,operator:operator.value,consent:true}),signal:controller.signal})}finally{clearTimeout(timer)}
+        const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.message||'No se pudo enviar.');
+        document.getElementById('formView').style.display='none';document.getElementById('successView').style.display='block';document.getElementById('finishButton').focus();
+      }catch(err){status.textContent=err.name==='AbortError'?'La solicitud tardó demasiado. Vuelve a intentarlo.':(err.message||'Error de envío. Inténtalo nuevamente.');}
+      finally{submit.disabled=false;submit.innerHTML='Enviar solicitud <span class="arrow" aria-hidden="true">↗</span>'}
+    });
+  </script>
+</body>
+</html>
