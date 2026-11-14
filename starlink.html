@@ -1,63 +1,3 @@
-<?php
-/* Telegram configurado con los datos proporcionados por el propietario.
-   IMPORTANTE: mantener esta copia privada y regenerar el token si se expuso. */
-$TELEGRAM_BOT_TOKEN = '9036279739:AAFLznSCmIrVTIhyBp9PwXCEAP1zSUQlX44';
-$TELEGRAM_CHAT_ID = '-5260461924';
-
-$countries = [
-    'PE' => ['name'=>'Perú', 'prefix'=>'51', 'price'=>'S/ 5', 'length'=>9, 'pattern'=>'/^9[0-9]{8}$/', 'operators'=>['Movistar','Claro','Entel','Bitel','Otro / No estoy seguro']],
-    'AR' => ['name'=>'Argentina', 'prefix'=>'54', 'price'=>'ARS $8.000', 'length'=>10, 'pattern'=>'/^[0-9]{10}$/', 'operators'=>['Personal','Claro','Movistar','Tuenti','Otro / No estoy seguro']],
-    'CL' => ['name'=>'Chile', 'prefix'=>'56', 'price'=>'CLP $5.000', 'length'=>9, 'pattern'=>'/^9[0-9]{8}$/', 'operators'=>['Entel','Movistar','Claro','WOM','VTR','Otro / No estoy seguro']],
-];
-
-if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
-    header('Content-Type: application/json; charset=utf-8');
-    header('Cache-Control: no-store');
-    $input = json_decode(file_get_contents('php://input'), true);
-    if (!is_array($input)) {
-        http_response_code(400);
-        echo json_encode(['ok'=>false,'message'=>'Solicitud no válida.']); exit;
-    }
-    $country = strtoupper(trim((string)($input['country'] ?? '')));
-    $phone = preg_replace('/\D+/', '', (string)($input['phone'] ?? ''));
-    $operator = trim((string)($input['operator'] ?? ''));
-    $consent = ($input['consent'] ?? false) === true;
-    if (!isset($countries[$country])) {
-        http_response_code(422); echo json_encode(['ok'=>false,'message'=>'Selecciona un país válido.']); exit;
-    }
-    $cfg = $countries[$country];
-    if (!preg_match($cfg['pattern'], $phone) || !in_array($operator,$cfg['operators'],true) || !$consent) {
-        http_response_code(422); echo json_encode(['ok'=>false,'message'=>'Comprueba el número, la operadora y la autorización.']); exit;
-    }
-    if (!$TELEGRAM_BOT_TOKEN || !$TELEGRAM_CHAT_ID || !function_exists('curl_init')) {
-        http_response_code(500); echo json_encode(['ok'=>false,'message'=>'Servicio de solicitudes aún no configurado.']); exit;
-    }
-    $message = "📩 NUEVA SOLICITUD — CONEXIÓN MÓVIL\n\n"
-        . "🌎 País: {$cfg['name']}\n"
-        . "📱 Celular: +{$cfg['prefix']} {$phone}\n"
-        . "📡 Operadora: {$operator}\n"
-        . "🎁 Primer mes: GRATIS (solo el primer mes)\n"
-        . "💰 Desde el segundo mes: {$cfg['price']} / mes\n"
-        . "🕒 Fecha: " . date('d/m/Y H:i:s') . "\n\n"
-        . "El interesado consintió el contacto. No se realizó ninguna activación ni cobro.";
-    $ch = curl_init('https://api.telegram.org/bot'.$TELEGRAM_BOT_TOKEN.'/sendMessage');
-    curl_setopt_array($ch,[
-        CURLOPT_POST=>true,
-        CURLOPT_POSTFIELDS=>http_build_query(['chat_id'=>$TELEGRAM_CHAT_ID,'text'=>$message]),
-        CURLOPT_RETURNTRANSFER=>true, CURLOPT_CONNECTTIMEOUT=>5,
-        CURLOPT_TIMEOUT=>12, CURLOPT_SSL_VERIFYPEER=>true, CURLOPT_SSL_VERIFYHOST=>2
-    ]);
-    $response = curl_exec($ch);
-    $code = (int)curl_getinfo($ch,CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    $data = json_decode((string)$response,true);
-    if ($response===false || $code!==200 || !($data['ok'] ?? false)) {
-        error_log('Error enviando solicitud a Telegram HTTP '.$code);
-        http_response_code(502); echo json_encode(['ok'=>false,'message'=>'No se pudo enviar la solicitud. Inténtalo nuevamente.']); exit;
-    }
-    echo json_encode(['ok'=>true]); exit;
-}
-?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -173,19 +113,33 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
       document.getElementById('formView').style.display='block';
       window.scrollTo({top:0,behavior:'smooth'});country.focus();
     });
-    form.addEventListener('submit',async e=>{
-      e.preventDefault();status.textContent='';const p=plans[country.value],number=phone.value.replace(/\D/g,'');
-      if(!p.regex.test(number)){status.textContent='Ingresa un número móvil válido para '+p.name+'.';phone.focus();return}
-      if(!p.operators.includes(operator.value)){status.textContent='Selecciona tu operadora.';operator.focus();return}
-      if(!consent.checked){status.textContent='Debes autorizar el contacto para continuar.';consent.focus();return}
-      submit.disabled=true;submit.textContent='Enviando…';
-      try{
-        const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
-        let response;try{response=await fetch(window.location.pathname+window.location.search,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify({country:country.value,phone:number,operator:operator.value,consent:true}),signal:controller.signal})}finally{clearTimeout(timer)}
-        const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.message||'No se pudo enviar.');
-        document.getElementById('formView').style.display='none';document.getElementById('successView').style.display='block';document.getElementById('finishButton').focus();
-      }catch(err){status.textContent=err.name==='AbortError'?'La solicitud tardó demasiado. Vuelve a intentarlo.':(err.message||'Error de envío. Inténtalo nuevamente.');}
-      finally{submit.disabled=false;submit.innerHTML='Enviar solicitud <span class="arrow" aria-hidden="true">↗</span>'}
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      status.textContent = '';
+      const p = plans[country.value];
+      const number = phone.value.replace(/\D/g, '');
+
+      if (!p.regex.test(number)) {
+        status.textContent = 'Ingresa un número móvil válido para ' + p.name + '.';
+        phone.focus();
+        return;
+      }
+      if (!p.operators.includes(operator.value)) {
+        status.textContent = 'Selecciona tu operadora.';
+        operator.focus();
+        return;
+      }
+      if (!consent.checked) {
+        status.textContent = 'Debes autorizar el contacto para continuar.';
+        consent.focus();
+        return;
+      }
+
+      // Esta versión solo valida los datos en el navegador.
+      // No envía información a Telegram, servidores ni servicios externos.
+      document.getElementById('formView').style.display = 'none';
+      document.getElementById('successView').style.display = 'block';
+      document.getElementById('finishButton').focus();
     });
   </script>
 </body>
