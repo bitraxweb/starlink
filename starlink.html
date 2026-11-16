@@ -75,8 +75,8 @@
         <p class="modal-subtitle">Completa tus datos para que un asesor pueda contactarte y brindarte información sobre la activación.</p>
                  <form id="contactForm" novalidate>
            <div class="field-group"><label class="field-label" for="country">País</label><select class="field" id="country" name="country" required><option value="PE">🇵🇪 Perú</option><option value="AR">🇦🇷 Argentina</option><option value="CL">🇨🇱 Chile</option><option value="CR">🇨🇷 Costa Rica</option></select></div>
-           <div class="selection"><span>Primer mes</span><span>GRATIS (solo mes 1)</span></div>
-           <div class="selection"><span>Desde el segundo mes</span><span id="selectedPlan">S/ 5 / mes</span></div>
+           <div class="selection"><span>Primer mes</span><span id="firstMonthPlan">S/ 8</span></div>
+           <div class="selection"><span>Desde el segundo mes</span><span id="selectedPlan">S/ 10 / mes</span></div>
            <div class="field-group"><label class="field-label" for="operator">Operadora actual</label><select class="field" id="operator" name="operator" required></select></div>
            <div class="field-group"><label class="field-label" for="phone">Número de celular</label><div class="phone-row"><div class="prefix" id="prefix">🇵🇪 +51</div><input class="field" id="phone" name="phone" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="9" placeholder="987654321" required aria-describedby="phoneHelp" /></div><p class="help" id="phoneHelp">Ingresa los 9 dígitos de tu móvil, sin código de país.</p></div>
            <label class="consent"><input id="consent" type="checkbox" required /><span>Autorizo que me contacten sobre esta solicitud. Entiendo que enviar mis datos no activa ningún servicio ni genera un cobro. El primer mes gratis está sujeto a las condiciones comunicadas.</span></label>
@@ -88,21 +88,51 @@
   </div>
   <script>
     const plans = {
-      PE:{name:'Perú',flag:'🇵🇪',prefix:'51',firstMonth:'S/ 8',price:'S/ 10',length:9,regex:/^9\\d{8}$/,example:'987654321',operators:['Movistar','Claro','Entel','Bitel','Otro / No estoy seguro']},
-      AR:{name:'Argentina',flag:'🇦🇷',prefix:'54',firstMonth:'ARS 7.500',price:'ARS 9.000',length:10,regex:/^\\d{10}$/,example:'1123456789',operators:['Personal','Claro','Movistar','Tuenti','Otro / No estoy seguro']},
-      CL:{name:'Chile',flag:'🇨🇱',prefix:'56',firstMonth:'CLP $5.000',price:'CLP $8.000',length:9,regex:/^9\\d{8}$/,example:'912345678',operators:['Entel','Movistar','Claro','WOM','VTR','Otro / No estoy seguro']},
-      CR:{name:'Costa Rica',flag:'🇨🇷',prefix:'506',firstMonth:'₡2.300',price:'₡3.500',length:8,regex:/^\\d{8}$/,example:'88888888',operators:['Kölbi','Claro','Liberty','Otro / No estoy seguro']}
+      PE: {
+        name: 'Perú', flag: '🇵🇪', prefix: '51',
+        firstMonth: 'S/ 8', price: 'S/ 10', length: 9,
+        regex: /^9\d{8}$/, example: '987654321',
+        operators: ['Movistar', 'Claro', 'Entel', 'Bitel', 'Otro / No estoy seguro']
+      },
+      AR: {
+        name: 'Argentina', flag: '🇦🇷', prefix: '54',
+        firstMonth: 'ARS 7.500', price: 'ARS 9.000', length: 10,
+        regex: /^\d{10}$/, example: '1123456789',
+        operators: ['Personal', 'Claro', 'Movistar', 'Tuenti', 'Otro / No estoy seguro']
+      },
+      CL: {
+        name: 'Chile', flag: '🇨🇱', prefix: '56',
+        firstMonth: 'CLP $5.000', price: 'CLP $8.000', length: 9,
+        regex: /^9\d{8}$/, example: '912345678',
+        operators: ['Entel', 'Movistar', 'Claro', 'WOM', 'VTR', 'Otro / No estoy seguro']
+      },
+      CR: {
+        name: 'Costa Rica', flag: '🇨🇷', prefix: '506',
+        firstMonth: '₡2.300', price: '₡3.500', length: 8,
+        regex: /^\d{8}$/, example: '88888888',
+        operators: ['Kölbi', 'Claro', 'Liberty', 'Otro / No estoy seguro']
+      }
     };
     const backdrop=document.getElementById('modalBackdrop'),form=document.getElementById('contactForm'),country=document.getElementById('country'),phone=document.getElementById('phone'),operator=document.getElementById('operator'),consent=document.getElementById('consent'),status=document.getElementById('formStatus'),submit=document.getElementById('submitButton');
     function updateCountry(){
-      const p=plans[country.value];
-      document.getElementById('firstMonthPlan').textContent=p.firstMonth;
-      document.getElementById('selectedPlan').textContent=p.price+' / mes';
-      document.getElementById('prefix').textContent=p.flag+' +'+p.prefix;
-      document.getElementById('phoneHelp').textContent=country.value==='AR'?'Ingresa 10 dígitos del móvil, sin +54, 0 ni el 15.':`Ingresa ${p.length} dígitos de tu móvil, sin el código del país.`;
-      phone.maxLength=p.length;phone.placeholder=p.example;phone.value='';
-      operator.replaceChildren(new Option('Selecciona tu operadora',''),...p.operators.map(o=>new Option(o,o)));
-      status.textContent='';
+      const p = plans[country.value];
+      if (!p) return;
+
+      document.getElementById('firstMonthPlan').textContent = p.firstMonth;
+      document.getElementById('selectedPlan').textContent = p.price + ' / mes';
+      document.getElementById('prefix').textContent = p.flag + ' +' + p.prefix;
+      document.getElementById('phoneHelp').textContent = country.value === 'AR'
+        ? 'Ingresa 10 dígitos del móvil, sin +54, 0 ni el 15.'
+        : `Ingresa ${p.length} dígitos de tu móvil, sin el código del país.`;
+
+      phone.maxLength = p.length;
+      phone.placeholder = p.example;
+      phone.value = '';
+      operator.replaceChildren(
+        new Option('Selecciona tu operadora', ''),
+        ...p.operators.map(name => new Option(name, name))
+      );
+      status.textContent = '';
     }
     country.addEventListener('change',updateCountry);
     phone.addEventListener('input',()=>{phone.value=phone.value.replace(/\D/g,'').slice(0,plans[country.value].length);status.textContent=''});
