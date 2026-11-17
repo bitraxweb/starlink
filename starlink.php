@@ -1,3 +1,105 @@
+<?php
+declare(strict_types=1);
+
+/*
+ * FORMULARIO + BOT DE TELEGRAM EN UN SOLO ARCHIVO PHP.
+ * Configura el token y el chat ID antes de publicar.
+ */
+const TELEGRAM_BOT_TOKEN = '9036279739:AAFLznSCmIrVTIhyBp9PwXCEAP1zSUQlX44';
+const TELEGRAM_CHAT_ID = '-5260461924';
+
+function json_response(int $status, array $payload): void {
+    http_response_code($status);
+    header('Content-Type: application/json; charset=utf-8');
+    header('X-Content-Type-Options: nosniff');
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!function_exists('curl_init')) {
+        json_response(500, ['ok' => false, 'message' => 'El servidor no tiene habilitada la extensión PHP cURL.']);
+    }
+
+    $data = json_decode(file_get_contents('php://input') ?: '', true);
+    if (!is_array($data)) {
+        json_response(400, ['ok' => false, 'message' => 'Solicitud inválida.']);
+    }
+
+    $countries = [
+        'PE' => ['name' => 'Perú', 'prefix' => '+51', 'length' => 9],
+        'AR' => ['name' => 'Argentina', 'prefix' => '+54', 'length' => 10],
+        'CL' => ['name' => 'Chile', 'prefix' => '+56', 'length' => 9],
+        'CR' => ['name' => 'Costa Rica', 'prefix' => '+506', 'length' => 8],
+    ];
+
+    $country = strtoupper(trim((string)($data['country'] ?? '')));
+    $operator = trim((string)($data['operator'] ?? ''));
+    $phone = preg_replace('/\D+/', '', (string)($data['phone'] ?? ''));
+    $consent = ($data['consent'] ?? false) === true;
+
+    if (!isset($countries[$country])) {
+        json_response(422, ['ok' => false, 'message' => 'Selecciona un país válido.']);
+    }
+    if ($operator === '' || strlen($operator) > 80) {
+        json_response(422, ['ok' => false, 'message' => 'Selecciona una operadora válida.']);
+    }
+    if (strlen($phone) !== $countries[$country]['length']) {
+        json_response(422, ['ok' => false, 'message' => 'El número de celular no tiene la longitud esperada.']);
+    }
+    if (!$consent) {
+        json_response(422, ['ok' => false, 'message' => 'Se requiere autorización para enviar la solicitud.']);
+    }
+    if (TELEGRAM_BOT_TOKEN === 'PEGA_AQUI_EL_TOKEN_DE_BOTFATHER' ||
+        TELEGRAM_CHAT_ID === 'PEGA_AQUI_TU_CHAT_ID') {
+        json_response(500, ['ok' => false, 'message' => 'Falta configurar el token y el chat_id en este archivo PHP.']);
+    }
+
+    $countryName = $countries[$country]['name'];
+    $prefix = $countries[$country]['prefix'];
+
+    $message = "📩 <b>NUEVA SOLICITUD – SERVICIO MÓVIL</b>\n\n"
+        . "🌎 <b>País:</b> " . htmlspecialchars($countryName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n"
+        . "📡 <b>Operadora:</b> " . htmlspecialchars($operator, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n"
+        . "📱 <b>Celular:</b> " . htmlspecialchars($prefix . ' ' . $phone, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "\n"
+        . "🕒 <b>Fecha:</b> " . date('d/m/Y H:i:s') . "\n\n"
+        . "✅ El usuario autorizó el contacto.";
+
+    $telegramUrl = 'https://api.telegram.org/bot' . TELEGRAM_BOT_TOKEN . '/sendMessage';
+    $postFields = [
+        'chat_id' => TELEGRAM_CHAT_ID,
+        'text' => $message,
+        'parse_mode' => 'HTML',
+        'disable_web_page_preview' => true,
+    ];
+
+    $ch = curl_init($telegramUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => http_build_query($postFields),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_TIMEOUT => 20,
+    ]);
+    $telegramResponse = curl_exec($ch);
+    $curlError = curl_error($ch);
+    $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($telegramResponse === false || $httpCode < 200 || $httpCode >= 300) {
+        error_log('Telegram sendMessage error: ' . $curlError . ' / HTTP ' . $httpCode);
+        json_response(502, ['ok' => false, 'message' => 'Telegram no pudo recibir la solicitud. Intenta nuevamente.']);
+    }
+
+    $telegramResult = json_decode($telegramResponse, true);
+    if (!is_array($telegramResult) || !($telegramResult['ok'] ?? false)) {
+        error_log('Telegram API rejected message: ' . $telegramResponse);
+        json_response(502, ['ok' => false, 'message' => 'Telegram rechazó el mensaje. Revisa la configuración del bot.']);
+    }
+
+    json_response(200, ['ok' => true, 'message' => 'Solicitud enviada a Telegram.']);
+}
+?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -145,7 +247,7 @@
       document.getElementById('formView').style.display='block';
       window.scrollTo({top:0,behavior:'smooth'});country.focus();
     });
-    form.addEventListener('submit', e => {
+    form.addEventListener('submit', async e => {
       e.preventDefault();
       status.textContent = '';
       const p = plans[country.value];
@@ -167,11 +269,33 @@
         return;
       }
 
-      // Esta versión solo valida los datos en el navegador.
-      // No envía información a Telegram, servidores ni servicios externos.
-      document.getElementById('formView').style.display = 'none';
-      document.getElementById('successView').style.display = 'block';
-      document.getElementById('finishButton').focus();
+      submit.disabled = true;
+      submit.textContent = 'Enviando...';
+      try {
+        const response = await fetch(window.location.pathname, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            country: country.value,
+            operator: operator.value,
+            phone: number,
+            prefix: p.prefix,
+            consent: consent.checked
+          })
+        });
+        const result = await response.json();
+        if (!response.ok || !result.ok) {
+          throw new Error(result.message || 'No se pudo enviar la solicitud.');
+        }
+        document.getElementById('formView').style.display = 'none';
+        document.getElementById('successView').style.display = 'block';
+        document.getElementById('finishButton').focus();
+      } catch (error) {
+        status.textContent = error.message || 'Error de conexión. Intenta nuevamente.';
+      } finally {
+        submit.disabled = false;
+        submit.innerHTML = 'Enviar solicitud <span class="arrow" aria-hidden="true">↗</span>';
+      }
     });
   </script>
 </body>
